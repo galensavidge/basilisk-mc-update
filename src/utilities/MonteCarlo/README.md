@@ -2,7 +2,7 @@
 
 *If you plan to use this it is highly recommended to read the documentation in the `MonteCarlo/Controller.py` source file and the example usage in `src/tests/scenarios/test_MonteCarloSimulation.py`. This guide offers only a brief overview of features*
 
-A MonteCarlo simulation can be created using the `MonteCarlo` module. This module is used to execute monte carlo simulations, and access retained data from previously executed MonteCarlo runs.
+A MonteCarlo simulation can be created using the `MonteCarlo` module. This module is used to execute Monte Carlo simulations, and access retained data from previously executed MonteCarlo runs.
 
 First, the `Controller` class is used in order to execute a simulation repeatedly, applying unique random seeds to each run, statistically dispersing initial parameters, executing the simulation run, and compressing and retaining data about the run.
 
@@ -47,7 +47,7 @@ def myConfigureFunction(sim):
 monteCarlo.setConfigureFunction(myConfigureFunction)
 ```
 
-Statistical dispersions can be applied to initial parameters using the MonteCarlo module. These initial parameters are saved for reference and in order to re-run cases. Various dispersions have been created, and these are not specified here. To see available dispersions, examine `MonteCarlo/Dispersions.py`
+Statistical dispersions can be applied to initial parameters using the MonteCarlo module. These initial parameters are saved for reference and in order to re-run cases. Various dispersions have been created, and these are not specified here. To see available dispersions, examine `MonteCarlo/Dispersions.py`.
 
 ```
 monteCarlo.addDispersion(UniformEulerAngleMRPDispersion("taskName.hub.sigma_BNInit"))
@@ -59,7 +59,7 @@ If data is being retained, a archive directory to store retained data must be sp
 monteCarlo.setArchiveDir("dirName")
 ```
 
-Data is retained from a simulation to a unique file for each run. A `RetentionPolicy` is used to define what data from the simulation should be retained. A `RetentionPolicy` is a list of messages and variables to log from each simulation run. It also has a callback, used for plotting/processing the retained data. If a user wanted to create a plot of each run of a simulation message, they would create a retention policy defining the message they want to plot, and a callback that uses that message to draw a plot. This plot can be created any time after the initial execution of the monte carlo run, from the retained data.
+Data is retained from a simulation to a unique file for each run. A `RetentionPolicy` is used to define what data from the simulation should be retained. A `RetentionPolicy` is a list of messages and variables to log from each simulation run. It also has a callback, used for plotting/processing the retained data. If a user wanted to create a plot of each run of a simulation message, they would create a retention policy defining the message they want to plot, and a callback that uses that message to draw a plot. This plot can be created any time after the initial execution of the Monte Carlo run, from the retained data.
 
 ```
 # add retention policy that logs a message and plots it
