@@ -100,7 +100,7 @@ class Controller:
             data.dataWriter.daemon = False
             return data
 
-    def setExecutionFunction(self, newModule):
+    def setExecutionFunction(self, executionFunction):
         """
         Set an execution function that executes a simulation instance.
 
@@ -111,20 +111,19 @@ class Controller:
                 It must execute the simulation.
                 Its return value is not used.
         """
-        self.simParams.executionFunction = newModule
+        self.simParams.executionFunction = executionFunction
 
-    def setConfigureFunction(self, newModule):
+    def setConfigureFunction(self, configureFunction):
         """
-        Set an execution function that executes a simulation instance.
+        Set a configuration function that configures a simulation instance.
 
         Args:
-            executionFunction: (sim: SimulationBaseClass) => None
+            configureFunction: (sim: SimulationBaseClass) => None
                 A function with one parameter, a simulation instance.
-                The function will be called after the creationFunction and configurationFunction in each simulation run.
-                It must execute the simulation.
+                The function will be called after the creationFunction has been called and modifications have been applied.
                 Its return value is not used.
         """
-        self.simParams.configureFunction = newModule
+        self.simParams.configureFunction = configureFunction
 
     def setSimulationFunction(self, newObject):
         """
@@ -742,7 +741,6 @@ class SimulationExecutor:
 
     This class can be used to execute a simulation on a different thread, by using this class as the processes target.
     """
-    #
 
     @classmethod
     def __call__(cls, params):
@@ -775,6 +773,9 @@ class SimulationExecutor:
             modifications = simParams.modifications
             magnitudes = simParams.dispersionMag
 
+            # list of new parameter dispersions
+            dispersionsApplied = {}
+
             # we may want to disperse random seeds
             if simParams.shouldDisperseSeeds:
                 # generate the random seeds for the model (but don't apply them yet)
@@ -787,23 +788,55 @@ class SimulationExecutor:
             # RNGSeeds that need to be set before selfInit()
             cls.populateSeeds(simInstance, modifications)
 
+            # apply the previously saved modifications and the random seeds
+            for variable, value in list(modifications.items()):
+                disperseStatement = "simInstance." + variable + "=" + value
+                if simParams.verbose:
+                    print("Executing parameter modification -> ", disperseStatement)
+                exec(disperseStatement)
+
             # we may want to disperse parameters
             for disp in simParams.dispersions:
                 try:
                     name = disp.getName()
                     if name not in modifications:  # could be using a saved parameter.
-                        modifications[name] = disp.generateString(simInstance)
+                        value = disp.generateString(simInstance)
+                        dispersionsApplied[name] = value
                         if simParams.saveDispMag:
-                            magnitudes[name] = disp.generateMagString()
+                            if not name in magnitudes:
+                                magnitudes[name] = disp.generateMagString()
+                            else:
+                                magnitudes[name] += " + " + disp.generateMagString()
+
+                        disperseStatement = f"simInstance.{name} = {value}"
+                        if simParams.verbose:
+                            print("Executing parameter dispersion -> ",
+                                  disperseStatement, "\n")
+                        exec(disperseStatement)
+
                 except TypeError:
                     # This accomodates dispersion variables that are co-dependent
-                    disp.generate()
+                    disp.generate(simInstance)
                     for i in range(1, disp.numberOfSubDisps+1):
                         name = disp.getName(i)
                         if name not in modifications:  # could be using a saved parameter.
-                            modifications[name] = disp.generateString(i, simInstance)
+                            value = disp.generateString(i, simInstance)
+                            dispersionsApplied[name] = value
                             if simParams.saveDispMag:
-                                magnitudes[name] = disp.generateMagString()
+                                if not name in magnitudes:
+                                    magnitudes[name] = disp.generateMagString()
+                                else:
+                                    magnitudes[name] += " + " + disp.generateMagString()
+
+                            disperseStatement = f"simInstance.{name} = {value}"
+                            if simParams.verbose:
+                                print("Executing parameter dispersion -> ",
+                                      disperseStatement, "\n")
+                            exec(disperseStatement)
+
+            # update modifications dictionary to include the parameter
+            # dispersions as well
+            modifications.update(dispersionsApplied)
 
             # if archiving, this run's parameters and random seeds are saved in its own json file
             if simParams.shouldArchiveParameters:
@@ -819,17 +852,12 @@ class SimulationExecutor:
                             for k in sorted(magnitudes.keys()):
                                 outfileMag.write("'%s':'%s', \n" % (k, magnitudes[k]))
 
+            # configure function must be called after modifications have been
+            # applied to the sim
             if simParams.configureFunction is not None:
                 if simParams.verbose:
                     print("Configuring sim")
                 simParams.configureFunction(simInstance)
-
-            # apply the dispersions and the random seeds
-            for variable, value in list(modifications.items()):
-                disperseStatement = "simInstance." + variable + "=" + value
-                if simParams.verbose:
-                    print("Executing parameter modification -> ", disperseStatement)
-                exec(disperseStatement)
 
             # setup data logging
             if len(simParams.retentionPolicies) > 0:
