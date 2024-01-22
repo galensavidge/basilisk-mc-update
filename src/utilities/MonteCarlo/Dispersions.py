@@ -73,9 +73,9 @@ class BaseDispersion(abc.ABC):
         This function generates text for the `runXmag.txt` files that are
         written when Monte Carlo runs are executed. Some exampeles are "XX%"
         for uniform distribution samples or "XX sigma" for Gaussian
-        distribution samples. This function should not do any sampling itself,
-        it should only return information about the dispersed parameter value
-        already computed.
+        distribution samples. This function should not do any sampling itself;
+        it should only return information about the dispersed parameter
+        value(s) already computed.
         """
         pass
 
