@@ -1,7 +1,7 @@
 
  # ISC License
  #
- # Copyright (c) 2016, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
+ # Copyright (c) 2024, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
  #
  # Permission to use, copy, modify, and/or distribute this software for any
  # purpose with or without fee is hereby granted, provided that the above
@@ -797,13 +797,14 @@ class SimulationExecutor:
 
             # we may want to disperse parameters
             for disp in simParams.dispersions:
-                try:
-                    name = disp.getName()
+                disp.generate(simInstance)
+                for i in range(1, disp.numberOfSubDisps+1):
+                    name = disp.getName(i)
                     if name not in modifications:  # could be using a saved parameter.
-                        value = disp.generateString(simInstance)
+                        value = disp.generateString(i, simInstance)
                         dispersionsApplied[name] = value
                         if simParams.saveDispMag:
-                            if not name in magnitudes:
+                            if name not in magnitudes:
                                 magnitudes[name] = disp.generateMagString()
                             else:
                                 magnitudes[name] += " + " + disp.generateMagString()
@@ -813,26 +814,6 @@ class SimulationExecutor:
                             print("Executing parameter dispersion -> ",
                                   disperseStatement, "\n")
                         exec(disperseStatement)
-
-                except TypeError:
-                    # This accomodates dispersion variables that are co-dependent
-                    disp.generate(simInstance)
-                    for i in range(1, disp.numberOfSubDisps+1):
-                        name = disp.getName(i)
-                        if name not in modifications:  # could be using a saved parameter.
-                            value = disp.generateString(i, simInstance)
-                            dispersionsApplied[name] = value
-                            if simParams.saveDispMag:
-                                if not name in magnitudes:
-                                    magnitudes[name] = disp.generateMagString()
-                                else:
-                                    magnitudes[name] += " + " + disp.generateMagString()
-
-                            disperseStatement = f"simInstance.{name} = {value}"
-                            if simParams.verbose:
-                                print("Executing parameter dispersion -> ",
-                                      disperseStatement, "\n")
-                            exec(disperseStatement)
 
             # update modifications dictionary to include the parameter
             # dispersions as well

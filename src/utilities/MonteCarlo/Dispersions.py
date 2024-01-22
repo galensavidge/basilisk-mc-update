@@ -1,7 +1,7 @@
 
  # ISC License
  #
- # Copyright (c) 2016, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
+ # Copyright (c) 2024, Autonomous Vehicle Systems Lab, University of Colorado at Boulder
  #
  # Permission to use, copy, modify, and/or distribute this software for any
  # purpose with or without fee is hereby granted, provided that the above
@@ -20,26 +20,73 @@
 import abc
 import collections
 import random
+from typing import Any
 
 import numpy as np
 from Basilisk.utilities import RigidBodyKinematics as rbk
 from Basilisk.utilities import orbitalMotion
 
 
-class SingleVariableDispersion(object):
-    __metaclass__ = abc.ABCMeta
+class BaseDispersion(abc.ABC):
+    """Defines the interface for all dispersion classes."""
+
+    def __init__(self, numberOfSubDisps: int = 1):
+
+        # Number of variable paths which this dispersion modifies
+        self.numberOfSubDisps = numberOfSubDisps
+
+    def generate(self, sim) -> Any:
+        """Internally generates values for the dispersed parameter(s).
+
+        This function is called once by the Monte Carlo controller. A return
+        value can be assigned but it is not used. Overriding this function is
+        optional -- by default it does nothing.
+
+        Args:
+            sim: The simulation instance.
+        """
+        pass
+
+    @abc.abstractmethod
+    def getName(self, index: int) -> str:
+        """Returns the variable path to a parameter to be dispersed.
+
+        Args:
+            index: A one-indexed parameter index.
+        """
+        pass
+
+    @abc.abstractmethod
+    def generateString(self, index: int, sim) -> str:
+        """Returns the dispersed value of a parameter as a string.
+
+        Args:
+            index: A one-indexed parameter index.
+            sim: The simulation instance.
+        """
+        pass
+
+    @abc.abstractmethod
+    def generateMagString(self) -> str:
+        """Returns human-readable information about the parameter realization.
+
+        This function generates text for the `runXmag.txt` files that are
+        written when Monte Carlo runs are executed. Some exampeles are "XX%"
+        for uniform distribution samples or "XX sigma" for Gaussian
+        distribution samples. This function should not do any sampling itself,
+        it should only return information about the dispersed parameter value
+        already computed.
+        """
+        pass
+
+
+class SingleVariableDispersion(BaseDispersion):
 
     def __init__(self, varName, bounds):
+        super().__init__()
         self.varName = varName
         self.bounds = bounds
         self.magnitude = []
-
-    @abc.abstractmethod
-    def generate(self, sim):
-        pass
-
-    def getDispersionMag(self):
-        return self.magnitude
 
     def checkBounds(self, value):
         if self.bounds is None:
@@ -51,11 +98,18 @@ class SingleVariableDispersion(object):
             value = self.bounds[1]
         return value
 
-    def getName(self):
+    @abc.abstractmethod
+    def generate(self, sim) -> Any:
+        pass
+
+    def getName(self, index):
         return self.varName
 
-    def generateString(self, sim):
+    def generateString(self, index, sim):
         return str(self.generate(sim))
+
+    def getDispersionMag(self):
+        return self.magnitude
 
     def generateMagString(self):
         return str(self.getDispersionMag())
@@ -86,22 +140,21 @@ class NormalDispersion(SingleVariableDispersion):
         dispValue = random.gauss(self.mean, self.stdDeviation)
         if self.bounds is not None:
             dispValue = self.checkBounds(dispValue)
-        if self.stdDeviation !=0 :
+        if self.stdDeviation != 0:
             self.magnitude.append(str(round((dispValue - self.mean)/self.stdDeviation,2)) + " sigma")
         return dispValue
 
 
-class VectorVariableDispersion(object):
-    __metaclass__ = abc.ABCMeta
-    
+class VectorVariableDispersion(BaseDispersion):
+
     def __init__(self, varName, bounds):
+        super().__init__()
         self.varName = varName
         self.bounds = bounds
         self.magnitude = []
-        return
 
     @abc.abstractmethod
-    def generate(self, sim=None):
+    def generate(self, sim) -> Any:
         pass
 
     def getDispersionMag(self):
@@ -181,7 +234,7 @@ class VectorVariableDispersion(object):
             value = bounds[1]
         return value
 
-    def generateString(self, sim):
+    def generateString(self, index, sim):
         # TODO does this actually behave differently then str(nextValue)?
         nextValue = self.generate(sim)
         val = '['
@@ -198,7 +251,7 @@ class VectorVariableDispersion(object):
         val = val[0:-1] + ']'
         return val
 
-    def getName(self):
+    def getName(self, index):
         return self.varName
 
 
@@ -315,6 +368,7 @@ class NormalVectorAngleDispersion(VectorVariableDispersion):
 
         return dispVec
 
+
 class UniformEulerAngleMRPDispersion(VectorVariableDispersion):
     def __init__(self, varName, bounds=None):
         """
@@ -358,10 +412,10 @@ class NormalThrusterUnitDirectionVectorDispersion(VectorVariableDispersion):
         self.thrusterIndex = thrusterIndex
         self.magnitude = []
 
-    def getName(self):
+    def getName(self, index):
         return '.'.join(self.varNameComponents[0:-1]) + '.thrDir_B'
 
-    def generateString(self, sim):
+    def generateString(self, index, sim):
         # TODO does this actually behave differently then str(nextValue)?
         nextValue = self.generate(sim)
 
@@ -385,21 +439,16 @@ class NormalThrusterUnitDirectionVectorDispersion(VectorVariableDispersion):
 
         return val
 
-    def generate(self, sim=None):
-        if sim is None:
-            print(("No simulation object parameter set in '" + self.generate.__name__
-                  + "()' dispersions will not be set for variable " + self.varName))
-            return
-        else:
-            separator = '.'
-            thrusterObject = getattr(sim, self.varNameComponents[0])
-            totalVar = separator.join(self.varNameComponents[0:-1])
-            dirVec = eval('sim.' + totalVar + '.thrDir_B')
-            angle = np.random.normal(0, self.phiStd, 1)
-            dirVec = np.array(dirVec).reshape(3).tolist()
-            dispVec = self.perturbVectorByAngle(dirVec, angle)
-            angleDisp = np.arccos(np.dot(dirVec, dispVec)/np.linalg.norm(dirVec)/np.linalg.norm(dispVec))
-            self.magnitude.append(str(round(angleDisp / self.phiStd,2)) + " sigma")
+    def generate(self, sim):
+        separator = '.'
+        totalVar = separator.join(self.varNameComponents[0:-1])
+        dirVec = eval('sim.' + totalVar + '.thrDir_B')
+        angle = np.random.normal(0, self.phiStd, 1)
+        dirVec = np.array(dirVec).reshape(3).tolist()
+        dispVec = self.perturbVectorByAngle(dirVec, angle)
+        angleDisp = np.arccos(np.dot(dirVec, dispVec)/np.linalg.norm(dirVec)/np.linalg.norm(dispVec))
+        self.magnitude.append(str(round(angleDisp / self.phiStd,2)) + " sigma")
+
         return dispVec
 
 
@@ -448,7 +497,7 @@ class NormalVectorCartDispersion(VectorVariableDispersion):
         return dispVec
 
 
-class InertiaTensorDispersion:
+class InertiaTensorDispersion(BaseDispersion):
     def __init__(self, varName, stdDiag=None, boundsDiag=None, stdAngle=None):
         """
         Args:
@@ -457,6 +506,7 @@ class InertiaTensorDispersion:
             stdDeviation (float): The 1 sigma standard deviation of the diagonal element dispersions in kg*m^2.
             bounds (Array[float, float]): defines lower and upper cut offs for generated dispersion values kg*m^2.
         """
+        super().__init__()
         self.varName = varName
         self.varNameComponents = self.varName.split(".")
         self.stdDiag = stdDiag
@@ -476,7 +526,6 @@ class InertiaTensorDispersion:
                   + "()' dispersions will not be set for variable " + self.varName))
             return
         else:
-            vehDynObject = getattr(sim, self.varNameComponents[0])
             I = np.array(eval('sim.' + self.varName)).reshape(3, 3)
 
             # generate random values for the diagonals
@@ -512,7 +561,7 @@ class InertiaTensorDispersion:
             value = self.bounds[1]
         return value
 
-    def generateString(self, sim):
+    def generateString(self, index, sim):
         nextValue = self.generate(sim)
         # TODO does this actually behave differently then str(nextValue)?
         val = '['
@@ -533,7 +582,7 @@ class InertiaTensorDispersion:
         val = val[0:-1] + ']'
         return val
 
-    def getName(self):
+    def getName(self, index):
         return self.varName
 
 
@@ -555,9 +604,8 @@ class OrbitalElementDispersion:
         self.varName2Components = self.varName2.split(".")
         self.oeDict = dispDict
 
-
     def generate(self, sim=None):
-        elems = orbitalMotion.ClassicElements
+        elems = orbitalMotion.ClassicElements()
         for key in self.oeDict.keys():
             if self.oeDict[key] is not None and key != "mu":
                 exec("elems."+ key + " = np.random." + self.oeDict[key][0] + "(" +  str(self.oeDict[key][1]) + ', ' +  str(self.oeDict[key][2]) + ")")
@@ -566,11 +614,10 @@ class OrbitalElementDispersion:
                     exec("elems." + key + " = 0.")
         if elems.e < 0:
             elems.e = 0
-        r, v =orbitalMotion.elem2rv_parab( self.oeDict["mu"], elems)
+        r, v = orbitalMotion.elem2rv_parab(self.oeDict["mu"], elems)
 
         self.dispR = r
         self.dispV = v
-
 
     def generateString(self, index, sim=None):
         if index == 1:
@@ -588,6 +635,7 @@ class OrbitalElementDispersion:
             return self.varName1
         if index == 2:
             return self.varName2
+
 
 class MRPDispersionPerAxis(VectorVariableDispersion):
     def __init__(self, varName, bounds=None):
